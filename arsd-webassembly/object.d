@@ -11,6 +11,8 @@ version(CarelessAlocation)
 	version = inline_concat;
 }
 
+import core.arsd.memory_allocation;
+
 alias noreturn = typeof(*null);
 alias string = immutable(char)[];
 alias wstring = immutable(wchar)[];
@@ -18,6 +20,56 @@ alias dstring = immutable(dchar)[];
 alias size_t = uint;
 alias ptrdiff_t = int;
 
+
+version(WebAssembly)
+{
+    // llvm intrinsics {
+        /+
+            mem must be 0 (it is index of memory thing)
+            delta is in 64 KB pages
+            return OLD size in 64 KB pages, or size_t.max if it failed.
+        +/
+        pragma(LDC_intrinsic, "llvm.wasm.memory.grow.i32")
+        private int llvm_wasm_memory_grow(int mem, int delta);
+
+
+        // in 64 KB pages
+        pragma(LDC_intrinsic, "llvm.wasm.memory.size.i32")
+        private int llvm_wasm_memory_size(int mem);
+    // }
+
+
+    // debug
+    export extern(C) void printBlockDebugInfo(void* ptr) {
+        if(ptr is null) {
+            foreach(block; AllocatedBlock) {
+                printBlockDebugInfo(block);
+            }
+            return;
+        }
+
+        // otherwise assume it is a pointer returned from malloc
+
+        auto block = (cast(AllocatedBlock*) ptr) - 1;
+        if(ptr is null)
+            block = cast(AllocatedBlock*) &__heap_base;
+
+        printBlockDebugInfo(block);
+    }
+
+    // debug
+    void printBlockDebugInfo(AllocatedBlock* block) {
+        import std.stdio;
+        writeln(block.blockSize, " ", block.flags, " ", block.checkChecksum() ? "OK" : "X", " ");
+        if(block.checkChecksum())
+            writeln(cast(size_t)((cast(ubyte*) (block + 2)) + block.blockSize), " ", block.file, " : ", block.line);
+    }
+
+    export extern(C) ubyte* bridge_malloc(size_t sz) {
+        return malloc(sz).ptr;
+    }
+
+}
 
 
 // then the entry point just for convenience so main works.
@@ -27,11 +79,12 @@ version(WebAssembly)
     export extern(C) void _start() { _Dmain(null); }
 }
 
+
 extern(C) bool _xopEquals(in void*, in void*) { return false; } // assert(0);
 
 // basic array support {
 
-void reserve(T)(ref T[] arr, size_t length) {
+void reserve(T)(ref T[] arr, size_t length) @trusted {
     arr = (cast(T*) (malloc(length * T.sizeof).ptr))[0 .. 0];
 }
 
@@ -86,7 +139,7 @@ extern(C) void _d_arraybounds_index(string file, uint line, size_t index, size_t
 }
 
 
-extern(C) void* memset(void* s, int c, size_t n)  @nogc nothrow
+extern(C) void* memset(void* s, int c, size_t n)  @nogc nothrow pure
 {
 	auto d = cast(ubyte*) s;
 	while(n) {
@@ -1707,7 +1760,7 @@ void __ArrayDtor(T)(scope T[] a)
         e.__xdtor();
 }
 
-TTo[] __ArrayCast(TFrom, TTo)(return scope TFrom[] from)
+TTo[] __ArrayCast(TFrom, TTo)(return scope TFrom[] from) nothrow
 {
     const fromSize = from.length * TFrom.sizeof;
     const toLength = fromSize / TTo.sizeof;
