@@ -1,7 +1,7 @@
 // Minimal druntime for webassembly. Assumes your program has a main function.
 module object;
 
-public import rt.hooks : free, malloc, calloc, realloc;
+import rt.hooks : free, malloc, calloc, realloc;
 static import rt.hooks;
 version(WebAssembly)
     static import arsd.webassembly;
@@ -10,8 +10,6 @@ version(CarelessAlocation)
 {
 	version = inline_concat;
 }
-
-import core.arsd.memory_allocation;
 
 alias noreturn = typeof(*null);
 alias string = immutable(char)[];
@@ -32,10 +30,6 @@ version(WebAssembly)
 extern(C) bool _xopEquals(in void*, in void*) { return false; } // assert(0);
 
 // basic array support {
-
-void reserve(T)(ref T[] arr, size_t length) @trusted {
-    arr = (cast(T*) (malloc(length * T.sizeof).ptr))[0 .. 0];
-}
 
 template _arrayOp(Args...)
 {
