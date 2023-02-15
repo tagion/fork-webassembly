@@ -1258,6 +1258,8 @@ extern (C) byte[] _d_arrayappendcTX(const TypeInfo ti, ref byte[] px, size_t n) 
 }
 
 
+
+extern(C) int sceClibPrintf(const(char*)fmt, ...);
 version(inline_concat)
 extern(C) void[] _d_arraycatnTX(const TypeInfo ti, scope byte[][] arrs) @trusted
 {
@@ -1267,6 +1269,7 @@ extern(C) void[] _d_arraycatnTX(const TypeInfo ti, scope byte[][] arrs) @trusted
         length += b.length;
 	if(!length)
 		return null;
+
 	ubyte* ptr = cast(ubyte*)malloc(length * elemSize);
 
 	//Copy data
@@ -1349,7 +1352,7 @@ extern (C) void[] _d_arrayappendcd(ref byte[] x, dchar c)
 
 
 alias AliasSeq(T...) = T;
-static foreach(type; AliasSeq!(byte, char, dchar, double, float, int, long, short, ubyte, uint, ulong, ushort, void, wchar)) {
+static foreach(type; AliasSeq!(bool, byte, char, dchar, double, float, int, long, short, ubyte, uint, ulong, ushort, void, wchar)) {
 	mixin(q{
 		class TypeInfo_}~type.mangleof~q{ : TypeInfo {
             override string toString() const pure nothrow @safe { return type.stringof; }
