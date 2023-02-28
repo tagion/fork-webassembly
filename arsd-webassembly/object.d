@@ -62,6 +62,8 @@ extern(C) void _d_arraybounds(string file, size_t line) {
         arsd.webassembly.eval(
             q{ console.error("Range error: " + $0 + ":" + $1 )}, 
             file, line);
+    else version(PSVita)
+        vitaPrint("Range Error: ", file, ":", line);
 	rt.hooks.abort();
 }
 
@@ -73,6 +75,8 @@ extern(C) void _d_arraybounds_slice(string file, uint line, size_t lwr, size_t u
         arsd.webassembly.eval(
         q{ console.error("Range error: " + $0 + ":" + $1 + " [" + $2 + ".." + $3 + "] <> " + $4)}, 
         file, line, lwr, upr, length);
+    else version(PSVita)
+        vitaPrint("Range Error: ", file, ":", line, " [", lwr, "..", upr, "] <> ", length);
 	rt.hooks.abort();
 }
 
@@ -83,6 +87,8 @@ extern(C) void _d_arraybounds_index(string file, uint line, size_t index, size_t
         arsd.webassembly.eval(
             q{ console.error("Array index " + $0  + " out of bounds '[0.."+$1+"]' " + $2 + ":" + $3)},
             index, length, file, line);
+    else version(PSVita)
+        vitaPrint("Array index: ", index, " out of bounds '[0..", length,"]'", file, ":", line);
 	rt.hooks.abort();
 }
 
@@ -126,10 +132,29 @@ public import core.arsd.utf_decoding;
 
 // }
 
+version(PSVita)
+{
+    extern(C) int sceClibPrintf(const(char*)fmt, ...) nothrow @nogc pure @safe;
+
+    void vitaPrint(Args...)(Args args) nothrow @nogc pure @trusted
+    {
+        static foreach(v; args)
+        {
+            static if(is(typeof(v) : int))
+                cast(void)sceClibPrintf("%d", v);
+            else static if(is(typeof(v) : string))
+                cast(void)sceClibPrintf("%.*s", v.length, v.ptr);
+        }
+        cast(void)sceClibPrintf("\n");
+    }
+}
+
 extern(C) void _d_assert(string file, uint line)  @trusted @nogc pure
 {
     version(WebAssembly)
 	    arsd.webassembly.eval(q{ console.error("Assert failure: " + $0 + ":" + $1); /*, "[" + $2 + ".." + $3 + "] <> " + $4);*/ }, file, line);//, lwr, upr, length);
+    else version(PSVita)
+        vitaPrint("Assert Failure: ", file, ":", line);
 	rt.hooks.abort();
 }
 void _d_assertp(immutable(char)* file, uint line)
@@ -139,6 +164,8 @@ void _d_assertp(immutable(char)* file, uint line)
     while(file[sz] != '\0') sz++;
     version(WebAssembly)
         arsd.webassembly.eval(q{ console.error("Assert failure: " + $0 + ":" + $1 + "(" + $2 + ")"); /*, "[" + $2 + ".." + $3 + "] <> " + $4);*/ }, file[0 .. sz], line);//, lwr, upr, length);
+    else version(PSVita)
+        vitaPrint("Assert Failure: ", file[0..sz], ":", line);
 	rt.hooks.abort();
 }
 
@@ -147,6 +174,8 @@ extern(C) void _d_assert_msg(string msg, string file, uint line) @trusted @nogc 
 {
     version(WebAssembly)
 	    arsd.webassembly.eval(q{ console.error("Assert failure: " + $0 + ":" + $1 + "(" + $2 + ")"); /*, "[" + $2 + ".." + $3 + "] <> " + $4);*/ }, file, line, msg);//, lwr, upr, length);
+    else version(PSVita)
+        vitaPrint("Assert Failure: ", file, ":", line, " (", msg, ")");
 	rt.hooks.abort();
 }
 
@@ -1241,10 +1270,15 @@ extern (C) byte[] _d_arrayappendcTX(const TypeInfo ti, ref byte[] px, size_t n) 
 	auto newSize = newLength * elemSize;
 	//import std.stdio; writeln(newSize, " ", newLength);
 	ubyte* ptr;
+    bool hasReallocated = false;
 	if(px.ptr is null)
 		ptr = malloc(newSize).ptr;
-	else // FIXME: anti-stomping by checking length == used
+	else
+    {
+        // FIXME: anti-stomping by checking length == used   
+        hasReallocated = true;
 		ptr = realloc(cast(ubyte[])px, newSize).ptr;
+    }
 	auto ns = ptr[0 .. newSize];
 	auto op = px.ptr;
 	auto ol = px.length * elemSize;
@@ -1252,14 +1286,18 @@ extern (C) byte[] _d_arrayappendcTX(const TypeInfo ti, ref byte[] px, size_t n) 
 	foreach(i, b; op[0 .. ol])
 		ns[i] = b;
 
+    version(PSVita)
+    {
+        if(hasReallocated)
+            free(cast(ubyte*)op);
+    }
+
 	(cast(size_t *)(&px))[0] = newLength;
 	(cast(void **)(&px))[1] = ns.ptr;
 	return px;
 }
 
 
-
-extern(C) int sceClibPrintf(const(char*)fmt, ...);
 version(inline_concat)
 extern(C) void[] _d_arraycatnTX(const TypeInfo ti, scope byte[][] arrs) @trusted
 {

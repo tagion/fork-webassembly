@@ -3,6 +3,7 @@ module rt.hooks;
 version(WebAssembly)
 {
     public import core.arsd.memory_allocation;
+    import core.stdc.string;
     void abort() pure nothrow @nogc
     {
         static import arsd.webassembly;
@@ -43,20 +44,23 @@ else version(PSVita)
     {
         size_t size;
         ushort magicNumber = MAGIC;
+        // string file;
+        // size_t line;
         ubyte[0] data;
-        pure nothrow @nogc @trusted void* getPtr () return {return (cast(void*)&this) + PSVMem.sizeof ;}
+        pure nothrow @nogc @trusted void* getPtr () return {return (cast(void*)&this) + PSVMem.sizeof;}
+        pragma(inline, true) static size_t dataOffset() nothrow pure @nogc @trusted {return PSVMem.sizeof;}
     }
 
     package bool isPSVMem(void* ptr) pure nothrow @nogc @trusted
     {
-        if(cast(size_t)ptr <= PSVMem.sizeof) return false;
-        PSVMem mem = *cast(PSVMem*)(ptr - PSVMem.sizeof);
+        if(cast(size_t)ptr <= PSVMem.dataOffset) return false;
+        PSVMem mem = *cast(PSVMem*)(ptr - PSVMem.dataOffset);
         return mem.magicNumber == MAGIC;
     }
     package void* getPSVMem(void* ptr) pure nothrow @nogc @trusted
     {
         if(ptr is null || !isPSVMem(ptr)) return null;
-        return ptr - PSVMem.sizeof;
+        return ptr - PSVMem.dataOffset;
     }
 
 
@@ -73,68 +77,66 @@ else version(PSVita)
         extern(C) ubyte* psv_calloc(size_t count, size_t newSize);
 
         void abort(){psv_abort();}
-        // void free(ubyte* ptr) @nogc
-        // {
-        //     void* thePtr = getPSVMem(ptr);
-        //     if(thePtr !is null) psv_free(cast(ubyte*)thePtr);
-        // }
+        void free(ubyte* ptr) @nogc
+        {
+            void* thePtr = getPSVMem(ptr);
+            if(thePtr !is null) psv_free(cast(ubyte*)thePtr);
+        }
 
-        // ubyte[] malloc(size_t sz, string file = __FILE__, size_t line = __LINE__) 
-        // {
-        //     PSVMem* mem  = cast(PSVMem*)psv_malloc(PSVMem.sizeof + sz);
-        //     mem.magicNumber = MAGIC;
-        //     mem.size = sz;
-        //     ubyte[] ret = cast(ubyte[])mem.getPtr[0..sz];
-        //     ret[] = 0;
-        //     return ret;
-        // }
-        // ubyte[] realloc(ubyte* ptr, size_t newSize, string file = __FILE__, size_t line = __LINE__)
-        // {
-        //     void* thePtr = getPSVMem(ptr);
-        //     if(thePtr is null)
-        //     {
-        //         ubyte* ret = cast(ubyte*)malloc(newSize).ptr;
-        //         if(getPSVMem(ret) is null) psv_abort();
-        //         if(ptr !is null)
-        //         {
-        //             size_t sz = 0; while(ptr[sz] != '\0') sz++;
-        //             //Find the initial size
-        //             memcpy(ret, ptr, sz-1);
-        //         }
-        //         return ret[0..newSize];
-        //     }
-            
-        //     size_t oldSize = (cast(PSVMem*)thePtr).size;
-        //     thePtr = psv_realloc(cast(ubyte*)thePtr, newSize+PSVMem.sizeof);
-        //     PSVMem* mem = cast(PSVMem*)thePtr;
-        //     mem.size = newSize;
-        //     mem.magicNumber = MAGIC;
-        //     memcpy(mem.getPtr, ptr, oldSize);
-        //     cast(void)sceClibPrintf("Copied %u bytes \n",oldSize );
-        //     return cast(ubyte[])mem.getPtr[0..newSize];
-        // }
-        // ubyte[] realloc(ubyte[] ptr, size_t newSize, string file = __FILE__, size_t line = __LINE__)
-        // {
-        //     if(ptr is null) return malloc(newSize);
-        //     auto thePtr = getPSVMem(ptr.ptr);
-        //     if(thePtr is null)
-        //     {
-        //         auto ret = malloc(newSize);
-        //         ret[0..ptr.length] = ptr[];
-        //         return ret;
-        //     }
-        //     return realloc(ptr.ptr, newSize);
-        // }
-        // ubyte[] calloc(size_t count, size_t size, string file = __FILE__, size_t line = __LINE__)
-        // {
-        //     return malloc(count*size);
-        // }
-        void free(ubyte* ptr) @nogc{psv_free(ptr);}
-        ubyte[] malloc(size_t sz, string file = __FILE__, size_t line = __LINE__) {return psv_malloc(sz)[0..sz];}
-        ubyte[] realloc(ubyte* ptr, size_t newSize, string file = __FILE__, size_t line = __LINE__){return psv_realloc(ptr, newSize)[0..newSize];}
-        ubyte[] realloc(ubyte[] ptr, size_t newSize, string file = __FILE__, size_t line = __LINE__){return psv_realloc_slice(ptr.length, ptr.ptr, newSize)[0..newSize];}
-
-        ubyte[] calloc(size_t count, size_t size, string file = __FILE__, size_t line = __LINE__){return psv_calloc(count,size)[0..count*size];}
-
+        ubyte[] malloc(size_t sz, string file = __FILE__, size_t line = __LINE__) 
+        {
+            PSVMem* mem  = cast(PSVMem*)psv_malloc(PSVMem.sizeof + sz);
+            mem.magicNumber = MAGIC;
+            // mem.file = file;
+            // mem.line = line;
+            mem.size = sz;
+            ubyte[] ret = (cast(ubyte*) mem.getPtr)[0..sz];
+            return ret;
+        }
+        ubyte[] realloc(ubyte* ptr, size_t newSize, string file = __FILE__, size_t line = __LINE__)
+        {
+            void* thePtr = getPSVMem(ptr);
+            if(thePtr is null) //Not heap allocated
+            {
+                //That MUST be a 0 terminated string (we hope it :)
+                ubyte* ret = cast(ubyte*)malloc(newSize, file, line).ptr;
+                if(!isPSVMem(ret))
+                {
+                    cast(void)sceClibPrintf("Ptr received is not a PSVMem\nAddr: %p", ptr);
+                    psv_abort();
+                }
+                if(ptr !is null)
+                {
+                    cast(void)sceClibPrintf("Copied Unknown\n");
+                    size_t sz = 0; while(ptr[sz] != '\0') sz++;
+                    //Find the initial size
+                    memcpy(ret, ptr, sz);
+                }
+                return ret[0..newSize];
+            }
+            ///Can't free/use realloc as it will clear memory and runtime copies after realloc.
+            ubyte* mem = malloc(newSize).ptr;
+            memcpy(mem, ptr, (cast(PSVMem*)thePtr).size);
+            return (cast(ubyte*)mem)[0..newSize];
+        }
+        ubyte[] realloc(ubyte[] ptr, size_t newSize, string file = __FILE__, size_t line = __LINE__)
+        {
+            if(ptr is null) return malloc(newSize, file, line);
+            auto thePtr = getPSVMem(ptr.ptr);
+            if(thePtr is null)
+            {
+                auto ret = malloc(newSize, file, line);
+                ret[0..ptr.length] = ptr[];
+                // cast(void)sceClibPrintf("Copied %.*s\n", cast(uint)ptr.length, cast(char*)ptr.ptr);
+                return ret;
+            }
+            return realloc(ptr.ptr, newSize, file, line);
+        }
+        ubyte[] calloc(size_t count, size_t size, string file = __FILE__, size_t line = __LINE__)
+        {
+            ubyte[] ret =  malloc(count*size, file, line);
+            ret[] = 0;
+            return ret;
+        }
     }
 }
