@@ -77,16 +77,15 @@ enum tlsPointerIndex = 0;
 // 	free(cast(ubyte*)memory);
 // }
 
-// /// Get pointer to TLS memory for current thread. Called internally by compiler whenever a TLS variable is accessed.
-// // extern(C) void* __aeabi_read_tp() nothrow @nogc
-// // {
-// // 	auto ret = rtosbackend_getTLSPointerCurrThread(tlsPointerIndex);
-// // 	return ret;
-// // }
+/// Get pointer to TLS memory for current thread. Called internally by compiler whenever a TLS variable is accessed.
+// extern(C) void* __aeabi_read_tp() nothrow @nogc
+// {
+// 	auto ret = rtosbackend_getTLSPointerCurrThread(tlsPointerIndex);
+// 	return ret;
+// }
 
 //Stubs here
 
-extern(C) void onOutOfMemoryError(){assert(false);}
 extern(C) void* _d_eh_enter_catch(void* unwindHeader){return null;}
 extern(C) int _d_eh_resume_unwind(void* unwindHeader, void* context){assert(false);}
 extern(C) int _d_eh_personality(int state, void* unwindHeader,void* context){assert(false);}
