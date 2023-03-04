@@ -1,5 +1,8 @@
 module rt.hooks;
 
+version(PSVita) version = UsePSVMem;
+version(CustomRuntimeTest) version = UsePSVMem;
+
 version(WebAssembly)
 {
     public import core.arsd.memory_allocation;
@@ -37,7 +40,7 @@ version(WebAssembly)
     }
 
 }
-else version(PSVita)
+else version(UsePSVMem)
 {
     enum MAGIC = ushort.max - 1;
     package struct PSVMem
@@ -68,13 +71,34 @@ else version(PSVita)
 
     pure nothrow @nogc @trusted
     {
-        extern(C) void psv_abort();
-        extern(C) void psv_free(ubyte* ptr);
-        extern(C) int sceClibPrintf(const(char*) fmt, ...);
-        extern(C) ubyte* psv_realloc(ubyte* ptr, size_t newSize);
-        extern(C) ubyte* psv_realloc_slice(size_t length, ubyte* ptr, size_t newSize);
-        extern(C) ubyte* psv_malloc(size_t sz);
-        extern(C) ubyte* psv_calloc(size_t count, size_t newSize);
+        version(PSVita)
+        {
+            extern(C) void psv_abort();
+            extern(C) void psv_free(ubyte* ptr);
+            extern(C) int sceClibPrintf(const(char*) fmt, ...);
+            extern(C) ubyte* psv_realloc(ubyte* ptr, size_t newSize);
+            extern(C) ubyte* psv_realloc_slice(size_t length, ubyte* ptr, size_t newSize);
+            extern(C) ubyte* psv_malloc(size_t sz);
+            extern(C) ubyte* psv_calloc(size_t count, size_t newSize);
+        }
+        else
+        {
+            extern(C)
+            {
+                void exit(int exitCode);
+                void psv_abort()
+                {
+                    asm pure @nogc nothrow {int 3;}
+                    exit(-1);
+                }
+                pragma(mangle, "free") void psv_free(ubyte* ptr);
+                pragma(mangle, "realloc") ubyte* psv_realloc(ubyte* ptr, size_t newSize);
+                pragma(mangle, "malloc") ubyte* psv_malloc(size_t sz);
+                pragma(mangle, "calloc") ubyte* psv_calloc(size_t count, size_t newSize);
+                pragma(mangle, "printf") int sceClibPrintf(const(char*) fmt, ...);
+            }
+
+        }
 
         void abort(){psv_abort();}
         void free(ubyte* ptr) @nogc

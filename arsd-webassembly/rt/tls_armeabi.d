@@ -1,6 +1,6 @@
 module rt.tls_armeabi;
 
-version(ARM):
+// version(ARM):
 
 extern(C) @nogc nothrow pure
 {
@@ -86,6 +86,21 @@ enum tlsPointerIndex = 0;
 
 //Stubs here
 
+extern(C) void _d_leave_cleanup(void* ptr)
+{
+}
+
+
+extern(C) bool _d_enter_cleanup(void* ptr)
+{
+    // currently just used to avoid that a cleanup handler that can
+    // be inferred to not return, is removed by the LLVM optimizer
+    //
+    // TODO: setup an exception handler here (ptr passes the address
+    // of a 40 byte stack area in a parent fuction scope) to deal with
+    // unhandled exceptions during unwinding.
+    return true;
+}
 extern(C) void* _d_eh_enter_catch(void* unwindHeader){return null;}
 extern(C) int _d_eh_resume_unwind(void* unwindHeader, void* context){assert(false);}
 extern(C) int _d_eh_personality(int state, void* unwindHeader,void* context){assert(false);}

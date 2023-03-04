@@ -6,6 +6,9 @@ static import rt.hooks;
 version(WebAssembly)
     static import arsd.webassembly;
 
+version(PSVita) version = CustomRuntimePrinter;
+version(CustomRuntimeTest) version = CustomRuntimePrinter;
+
 version(CarelessAlocation)
 {
 	version = inline_concat;
@@ -20,10 +23,27 @@ alias ptrdiff_t = int;
 
 
 // then the entry point just for convenience so main works.
-version(WebAssembly)
+version(CustomRuntimeTest)
 {
     extern(C) int _Dmain(string[] args);
-    export extern(C) void _start() { _Dmain(null); }
+    version(PSVita){}
+    else version(WebAssembly)
+    {
+        export extern(C) void _start() { _Dmain(null); }
+    }
+    else
+    {
+        export extern(C) int main(int argc, char** argv)
+        {
+            string[] args;
+            for(int i = 0; i < argc; i++)
+            {
+                size_t l = 0; while(argv[i][l] != '\0') l++;
+                args~= cast(string)argv[i][0..l];
+            }
+            return _Dmain(args);
+        }
+    }
 }
 
 
@@ -62,8 +82,8 @@ extern(C) void _d_arraybounds(string file, size_t line) {
         arsd.webassembly.eval(
             q{ console.error("Range error: " + $0 + ":" + $1 )}, 
             file, line);
-    else version(PSVita)
-        vitaPrint("Range Error: ", file, ":", line);
+    else version(CustomRuntimePrinter)
+        customRuntimePrinter("Range Error: ", file, ":", line);
 	rt.hooks.abort();
 }
 
@@ -75,8 +95,8 @@ extern(C) void _d_arraybounds_slice(string file, uint line, size_t lwr, size_t u
         arsd.webassembly.eval(
         q{ console.error("Range error: " + $0 + ":" + $1 + " [" + $2 + ".." + $3 + "] <> " + $4)}, 
         file, line, lwr, upr, length);
-    else version(PSVita)
-        vitaPrint("Range Error: ", file, ":", line, " [", lwr, "..", upr, "] <> ", length);
+    else version(CustomRuntimePrinter)
+        customRuntimePrinter("Range Error: ", file, ":", line, " [", lwr, "..", upr, "] <> ", length);
 	rt.hooks.abort();
 }
 
@@ -87,8 +107,8 @@ extern(C) void _d_arraybounds_index(string file, uint line, size_t index, size_t
         arsd.webassembly.eval(
             q{ console.error("Array index " + $0  + " out of bounds '[0.."+$1+"]' " + $2 + ":" + $3)},
             index, length, file, line);
-    else version(PSVita)
-        vitaPrint("Array index: ", index, " out of bounds '[0..", length,"]'", file, ":", line);
+    else version(CustomRuntimePrinter)
+        customRuntimePrinter("Array index: ", index, " out of bounds '[0..", length,"]'", file, ":", line);
 	rt.hooks.abort();
 }
 
@@ -132,20 +152,28 @@ public import core.arsd.utf_decoding;
 
 // }
 
-version(PSVita)
+version(CustomRuntimePrinter)
 {
-    extern(C) int sceClibPrintf(const(char*)fmt, ...) nothrow @nogc pure @safe;
-
-    void vitaPrint(Args...)(Args args) nothrow @nogc pure @trusted
+    version(PSVita)
+    {
+        extern(C) int sceClibPrintf(const(char*)fmt, ...) nothrow @nogc pure @safe;
+        alias printFn = sceClibPrintf;
+    }
+    else
+    {
+        private extern(C) int printf(const(char*)fmt, ...) nothrow @nogc pure @safe;
+        private alias printFn = printf;
+    }
+    private void customRuntimePrinter(Args...)(Args args) nothrow @nogc pure @trusted
     {
         static foreach(v; args)
         {
             static if(is(typeof(v) : int))
-                cast(void)sceClibPrintf("%d", v);
+                cast(void)printFn("%d", v);
             else static if(is(typeof(v) : string))
-                cast(void)sceClibPrintf("%.*s", v.length, v.ptr);
+                cast(void)printFn("%.*s", v.length, v.ptr);
         }
-        cast(void)sceClibPrintf("\n");
+        cast(void)printFn("\n");
     }
 }
 
@@ -154,8 +182,8 @@ extern(C) void _d_assert(string file, uint line)  @trusted @nogc pure
 {
     version(WebAssembly)
 	    arsd.webassembly.eval(q{ console.error("Assert failure: " + $0 + ":" + $1); /*, "[" + $2 + ".." + $3 + "] <> " + $4);*/ }, file, line);//, lwr, upr, length);
-    else version(PSVita)
-        vitaPrint("Assert Failure: ", file, ":", line);
+    else version(CustomRuntimePrinter)
+        customRuntimePrinter("Assert Failure: ", file, ":", line);
 	rt.hooks.abort();
 }
 void _d_assertp(immutable(char)* file, uint line)
@@ -165,8 +193,8 @@ void _d_assertp(immutable(char)* file, uint line)
     while(file[sz] != '\0') sz++;
     version(WebAssembly)
         arsd.webassembly.eval(q{ console.error("Assert failure: " + $0 + ":" + $1 + "(" + $2 + ")"); /*, "[" + $2 + ".." + $3 + "] <> " + $4);*/ }, file[0 .. sz], line);//, lwr, upr, length);
-    else version(PSVita)
-        vitaPrint("Assert Failure: ", file[0..sz], ":", line);
+    else version(CustomRuntimePrinter)
+        customRuntimePrinter("Assert Failure: ", file[0..sz], ":", line);
 	rt.hooks.abort();
 }
 
@@ -175,8 +203,8 @@ extern(C) void _d_assert_msg(string msg, string file, uint line) @trusted @nogc 
 {
     version(WebAssembly)
 	    arsd.webassembly.eval(q{ console.error("Assert failure: " + $0 + ":" + $1 + "(" + $2 + ")"); /*, "[" + $2 + ".." + $3 + "] <> " + $4);*/ }, file, line, msg);//, lwr, upr, length);
-    else version(PSVita)
-        vitaPrint("Assert Failure: ", file, ":", line, " (", msg, ")");
+    else version(CustomRuntimePrinter)
+        customRuntimePrinter("Assert Failure: ", file, ":", line, " (", msg, ")");
 	rt.hooks.abort();
 }
 
@@ -505,10 +533,16 @@ private int __switchSearch(T)(/*in*/ const scope T[][] cases, /*in*/ const scope
 }
 
 //TODO: Support someday?
-    extern(C) void _d_throw_exception(Throwable o)
+extern(C) void _d_throw_exception(Throwable o)
+{
+    version(PSVita)
     {
-        assert(false, "Exception throw");
+        import hip.util.conv;
+        assert(false, "Exception throw: " ~ o.file ~ ":" ~ to!string(o.line) ~ " ("~o.message~")");
     }
+    else
+        assert(false, "Exception throw: " ~ o.file~ " ("~o.message~")");
+}
 
 
 // for closures
@@ -1203,7 +1237,7 @@ extern (C) void* _d_newitemiT(in TypeInfo _ti)
 {
     auto p = _d_newitemU(_ti);
     auto init = _ti.initializer();
-    assert(init.length <= _ti.size);
+    assert(init.length <= _ti.size, "init.length <= _ti.size");
     memcpy(p, init.ptr, init.length);
     return p;
 }
