@@ -23,26 +23,23 @@ alias ptrdiff_t = int;
 
 
 // then the entry point just for convenience so main works.
-version(CustomRuntimeTest)
+extern(C) int _Dmain(string[] args);
+version(PSVita){}
+else version(WebAssembly)
 {
-    extern(C) int _Dmain(string[] args);
-    version(PSVita){}
-    else version(WebAssembly)
+    export extern(C) void _start() { _Dmain(null); }
+}
+else
+{
+    export extern(C) int main(int argc, char** argv)
     {
-        export extern(C) void _start() { _Dmain(null); }
-    }
-    else
-    {
-        export extern(C) int main(int argc, char** argv)
+        string[] args;
+        for(int i = 0; i < argc; i++)
         {
-            string[] args;
-            for(int i = 0; i < argc; i++)
-            {
-                size_t l = 0; while(argv[i][l] != '\0') l++;
-                args~= cast(string)argv[i][0..l];
-            }
-            return _Dmain(args);
+            size_t l = 0; while(argv[i][l] != '\0') l++;
+            args~= cast(string)argv[i][0..l];
         }
+        return _Dmain(args);
     }
 }
 
