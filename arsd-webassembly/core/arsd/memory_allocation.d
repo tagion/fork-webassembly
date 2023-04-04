@@ -19,15 +19,15 @@ version(WebAssembly)
 			return OLD size in 64 KB pages, or size_t.max if it failed.
 		+/
 		pragma(LDC_intrinsic, "llvm.wasm.memory.grow.i32")
-		private int llvm_wasm_memory_grow(int mem, int delta);
+		@trusted pure nothrow private int llvm_wasm_memory_grow(int mem, int delta);
 
 
 		// in 64 KB pages
 		pragma(LDC_intrinsic, "llvm.wasm.memory.size.i32")
-		private int llvm_wasm_memory_size(int mem);
+		@trusted pure nothrow private int llvm_wasm_memory_size(int mem);
 	// }
 	// debug
-	void printBlockDebugInfo(AllocatedBlock* block) {
+	void printBlockDebugInfo(const AllocatedBlock* block) {
 		import std.stdio;
 		writeln(block.blockSize, " ", block.flags, " ", block.checkChecksum() ? "OK" : "X", " ");
 		if(block.checkChecksum())
@@ -36,7 +36,7 @@ version(WebAssembly)
 
 
 	// debug
-	export extern(C) void printBlockDebugInfo(void* ptr) {
+	extern(C) void printBlockDebugInfo(const void* ptr) {
 		if(ptr is null) {
 			foreach(block; AllocatedBlock) {
 				printBlockDebugInfo(block);
@@ -54,7 +54,7 @@ version(WebAssembly)
 	}
 
 
-	export extern(C) ubyte* bridge_malloc(size_t sz) {
+	extern(C) ubyte* bridge_malloc(size_t sz) {
 		return malloc(sz).ptr;
 	}
 
@@ -81,11 +81,11 @@ version(WebAssembly)
 
 		// note this struct MUST align each alloc on an 8 byte boundary or JS is gonna throw bullshit
 
-		void populateChecksum() {
+		void populateChecksum() pure nothrow {
 			checksum = blockSize ^ magic;
 		}
 
-		bool checkChecksum() const @nogc {
+		bool checkChecksum() const @nogc pure nothrow{
 			return magic == Magic && checksum == (blockSize ^ magic);
 		}
 
@@ -114,7 +114,8 @@ version(WebAssembly)
 
 
 
-	private bool growMemoryIfNeeded(size_t sz) @trusted {
+	private bool growMemoryIfNeeded(size_t sz) @trusted nothrow 
+	{
 		if(cast(size_t) nextFree + AllocatedBlock.sizeof + sz >= memorySize * 64*1024) {
 			if(llvm_wasm_memory_grow(0, 4) == size_t.max)
 				assert(0, "Out of memory"); // out of memory
@@ -127,7 +128,7 @@ version(WebAssembly)
 		return false;
 	}
 
-	void free(ubyte* ptr) @nogc @trusted {
+	void free(ubyte* ptr) @nogc @trusted nothrow {
 		auto block = (cast(AllocatedBlock*) ptr) - 1;
 		if(!block.checkChecksum())
 			assert(false, "Could not check block on free");
@@ -143,7 +144,7 @@ version(WebAssembly)
 	}
 
 
-	ubyte[] malloc(size_t sz, string file = __FILE__, size_t line = __LINE__) @trusted {
+	ubyte[] malloc(size_t sz, string file = __FILE__, size_t line = __LINE__) @trusted nothrow {
 		// lol bumping that pointer
 		if(nextFree is null) {
 			nextFree = &__heap_base; // seems to be 75312
@@ -190,7 +191,7 @@ version(WebAssembly)
 	}
 
 
-	ubyte[] calloc(size_t count, size_t size, string file = __FILE__, size_t line = __LINE__) @trusted
+	ubyte[] calloc(size_t count, size_t size, string file = __FILE__, size_t line = __LINE__) @trusted nothrow
 	{
 		auto ret = malloc(count*size,file,line);
 		ret[0..$] = 0;
@@ -198,7 +199,7 @@ version(WebAssembly)
 	}
 
 
-	ubyte[] realloc(ubyte* ptr, size_t newSize, string file = __FILE__, size_t line = __LINE__) @trusted {
+	ubyte[] realloc(ubyte* ptr, size_t newSize, string file = __FILE__, size_t line = __LINE__) @trusted nothrow {
 		if(ptr is null)
 			return malloc(newSize, file, line);
 
@@ -246,7 +247,7 @@ version(WebAssembly)
 	*  If the ptr isn't owned by the runtime, it will completely malloc the data (instead of realloc)
 	*   and copy its old content.
 	*/
-	ubyte[] realloc(ubyte[] ptr, size_t newSize, string file = __FILE__, size_t line = __LINE__) @trusted
+	export ubyte[] realloc(ubyte[] ptr, size_t newSize, string file = __FILE__, size_t line = __LINE__) @trusted nothrow
 	{
 		if(ptr is null)
 			return malloc(newSize, file, line);

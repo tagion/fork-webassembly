@@ -1305,38 +1305,9 @@ template _d_arraysetlengthTImpl(Tarr : T[], T) {
 	}
 }
 
-extern (C) byte[] _d_arrayappendcTX(const TypeInfo ti, ref byte[] px, size_t n) @trusted {
-	auto elemSize = ti.next.size;
-	auto newLength = n + px.length;
-	auto newSize = newLength * elemSize;
-	//import std.stdio; writeln(newSize, " ", newLength);
-	ubyte* ptr;
-    bool hasReallocated = false;
-	if(px.ptr is null)
-		ptr = malloc(newSize).ptr;
-	else
-    {
-        // FIXME: anti-stomping by checking length == used   
-        hasReallocated = true;
-		ptr = realloc(cast(ubyte[])px, newSize).ptr;
-    }
-	auto ns = ptr[0 .. newSize];
-	auto op = px.ptr;
-	auto ol = px.length * elemSize;
+public import core.array.v2102;
+public import core.array.v2099;
 
-	foreach(i, b; op[0 .. ol])
-		ns[i] = b;
-
-    version(PSVita)
-    {
-        if(hasReallocated)
-            free(cast(ubyte*)op);
-    }
-
-	(cast(size_t *)(&px))[0] = newLength;
-	(cast(void **)(&px))[1] = ns.ptr;
-	return px;
-}
 
 
 version(inline_concat)
@@ -1812,19 +1783,6 @@ TTo[] __ArrayCast(TFrom, TTo)(return scope TFrom[] from) nothrow
     return *cast(TTo[]*)a;
 }
 
-extern (C) void[] _d_arrayappendT(const TypeInfo ti, ref byte[] x, byte[] y)
-{
-    auto length = x.length;
-    auto tinext = ti.next;
-    auto sizeelem = tinext./*t*/size;              // array element size
-    _d_arrayappendcTX(ti, x, y.length);
-    memcpy(x.ptr + length * sizeelem, y.ptr, y.length * sizeelem);
-
-    // do postblit
-    //__doPostblit(x.ptr + length * sizeelem, y.length * sizeelem, tinext);
-    return x;
-}
-
 extern (C) int _adEq2(void[] a1, void[] a2, TypeInfo ti)
 {
     debug(adi) printf("_adEq2(a1.length = %d, a2.length = %d)\n", a1.length, a2.    length);
@@ -1914,6 +1872,8 @@ class Throwable : Object
         int opApply(scope int delegate(ref size_t, ref const(char[]))) const;
         string toString() const;
     }
+
+    alias TraceDeallocator = void function(TraceInfo) nothrow;
 
     string      msg;    /// A message describing the error.
 
