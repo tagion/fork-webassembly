@@ -11,7 +11,7 @@ template _d_arrayappendcTXImpl(Tarr: T[], T)
         pragma(inline, false);
         auto ti = typeid(Tarr);
 
-        alias pureArrayAppendcTX =  @trusted nothrow pure byte[] function(const TypeInfo ti, ref byte[] px, size_t n);
+        alias pureArrayAppendcTX =  extern(C) @trusted nothrow pure byte[] function(const TypeInfo ti, ref byte[] px, size_t n);
 
         auto arrayAppendcTX = cast(pureArrayAppendcTX)&core.array.common._d_arrayappendcTX;
 

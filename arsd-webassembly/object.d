@@ -18,8 +18,8 @@ alias noreturn = typeof(*null);
 alias string = immutable(char)[];
 alias wstring = immutable(wchar)[];
 alias dstring = immutable(dchar)[];
-alias size_t = uint;
-alias ptrdiff_t = int;
+alias size_t = typeof(int.sizeof);
+alias ptrdiff_t = typeof(cast(void*)0 - cast(void*)0);
 
 
 // then the entry point just for convenience so main works.
@@ -33,13 +33,14 @@ else
 {
     export extern(C) int main(int argc, char** argv)
     {
-        string[] args;
+        char[][] args;
         for(int i = 0; i < argc; i++)
         {
             size_t l = 0; while(argv[i][l] != '\0') l++;
-            args~= cast(string)argv[i][0..l];
+            customRuntimePrinter(argv[i][0..l]);
+            args~= argv[i][0..l];
         }
-        return _Dmain(args);
+        return _Dmain(cast(string[])args);
     }
 }
 
@@ -124,13 +125,14 @@ extern(C) void* memset(void* s, int c, size_t n)  @nogc nothrow pure
 pragma(LDC_intrinsic, "llvm.memcpy.p0i8.p0i8.i#")
     void llvm_memcpy(T)(void* dst, const(void)* src, T len, bool volatile_ = false);
 
-extern(C) void *memcpy(void* dest, const(void)* src, size_t n) pure @nogc nothrow
-{
-	ubyte *d = cast(ubyte*) dest;
-	const (ubyte) *s = cast(const(ubyte)*)src;
-	for (; n; n--) *d++ = *s++;
-	return dest;
-}
+extern(C) void *memcpy(void* dest, const(void)* src, size_t n) pure @nogc nothrow;
+// extern(C) void *memcpy(void* dest, const(void)* src, size_t n) pure @nogc nothrow
+// {
+// 	ubyte *d = cast(ubyte*) dest;
+// 	const (ubyte) *s = cast(const(ubyte)*)src;
+// 	for (; n; n--) *d++ = *s++;
+// 	return dest;
+// }
 
 extern(C) int memcmp(const(void)* s1, const(void*) s2, size_t n) pure @nogc nothrow @trusted
 {
@@ -161,13 +163,15 @@ version(CustomRuntimePrinter)
         private extern(C) int printf(const(char*)fmt, ...) nothrow @nogc pure @safe;
         private alias printFn = printf;
     }
-    private void customRuntimePrinter(Args...)(Args args) nothrow @nogc pure @trusted
+    void customRuntimePrinter(Args...)(Args args) nothrow @nogc pure @trusted
     {
         static foreach(v; args)
         {
-            static if(is(typeof(v) : int))
+            static if(is(typeof(v) : char))
+                cast(void)printFn("%c", v);
+            else static if(is(typeof(v) : int))
                 cast(void)printFn("%d", v);
-            else static if(is(typeof(v) : string))
+            else static if(is(typeof(v) : string) || is(typeof(v) : char[]))
                 cast(void)printFn("%.*s", v.length, v.ptr);
         }
         cast(void)printFn("\n");
@@ -216,7 +220,7 @@ extern (C) noreturn onOutOfMemoryErrorNoGC() @trusted nothrow @nogc
 }
 void __switch_error(string file, size_t line) @trusted @nogc pure
 {
-	_d_assert_msg("final switch error",file, line);
+	_d_assert_msg("final switch error",file, cast(uint)line);
 }
 
 bool __equals(T1, T2)(scope const T1[] lhs, scope const T2[] rhs) {
@@ -637,6 +641,7 @@ class TypeInfo
 	{
 		return (cast(const(void)*) null)[0 .. typeof(null).sizeof];
 	}
+    const(OffsetTypeInfo)[] offTi() const { return null; }
 
 	@property uint flags() nothrow pure const @safe @nogc { return 0; }
 	/// Run the destructor on the object and all its sub-objects
@@ -658,12 +663,19 @@ class TypeInfo_Class : TypeInfo
 	void function(Object) classInvariant;
 	uint flags;
 	void* deallocator;
-	void*[] offTi;
+	OffsetTypeInfo[] m_offTi;
 	void function(Object) defaultConstructor;
 	immutable(void)* rtInfo;
 
 	override @property size_t size() nothrow pure const
     { return Object.sizeof; }
+
+    override string toString() const pure { return name; }
+    override @property const(OffsetTypeInfo)[] offTi() nothrow pure const
+    {
+        return m_offTi;
+    }
+
 
     override size_t getHash(scope const void* p) @trusted const
     {
@@ -782,6 +794,7 @@ class TypeInfo_Pointer : TypeInfo
 
 class TypeInfo_Array : TypeInfo {
 	TypeInfo value;
+    override string toString() const { return value.toString() ~ "[]"; }
 	override size_t size() const { return (void[]).sizeof; }
 	override const(TypeInfo) next() const { return value; }
 
@@ -804,6 +817,10 @@ class TypeInfo_Array : TypeInfo {
         return (void[]).alignof;
     }
 	override const(void)[] initializer() const @trusted { return (cast(void *)null)[0 ..  (void[]).sizeof]; }
+}
+class TypeInfo_Tuple : TypeInfo
+{
+    TypeInfo[] elements;
 }
 
 class TypeInfo_StaticArray : TypeInfo {
@@ -1436,7 +1453,7 @@ static foreach(type; AliasSeq!(bool, byte, char, dchar, double, float, int, long
 		}
 		class TypeInfo_A}~type.mangleof~q{ : TypeInfo_Array {
             override string toString() const { return (type[]).stringof; }
-			override const(TypeInfo) next() const { return cast(inout)typeid(type); }
+			override @property const(TypeInfo) next() const { return cast(inout)typeid(type); }
             override size_t getHash(scope const void* p) @trusted const nothrow
             {
                 return hashOf(*cast(const type[]*) p);
@@ -1664,28 +1681,29 @@ class TypeInfo_Struct : TypeInfo {
 	void function(void*) xpostblit;
 	uint align_;
 	immutable(void)* rtinfo;
-    // private struct _memberFunc //? Is it necessary
-    // {
-    //     union
-    //     {
-    //         struct // delegate
-    //         {
-    //             const void* ptr;
-    //             const void* funcptr;
-    //         }
-    //         @safe pure nothrow
-    //         {
-    //             bool delegate(in void*) xopEquals;
-    //             int delegate(in void*) xopCmp;
-    //         }
-    //     }
-    // }
+    private struct _memberFunc //? Is it necessary
+    {
+        union
+        {
+            struct // delegate
+            {
+                const void* ptr;
+                const void* funcptr;
+            }
+            @safe pure nothrow
+            {
+                bool delegate(in void*) xopEquals;
+                int delegate(in void*) xopCmp;
+            }
+        }
+    }
 
 	enum StructFlags : uint
 	{
 		hasPointers = 0x1,
 		isDynamicType = 0x2, // built at runtime, needs type info in xdtor
 	}
+    override string toString() const { return name; }
 	override size_t size() const { return m_init.length; }
 	override @property uint flags() nothrow pure const @safe @nogc { return m_flags; }
 
@@ -1748,7 +1766,6 @@ class TypeInfo_Struct : TypeInfo {
 	{
 		return m_init;
 	}
-
 }
 
 extern(C) bool _xopCmp(in void*, in void*) { return false; }
@@ -1761,24 +1778,28 @@ void __ArrayDtor(T)(scope T[] a)
         e.__xdtor();
 }
 
-TTo[] __ArrayCast(TFrom, TTo)(return scope TFrom[] from) nothrow
+private void onArrayCastError(string typeFrom, size_t fromSize, string typeTo, size_t toSize) nothrow
+{
+    version(CustomRuntimePrinter)
+        customRuntimePrinter("Invalid ArrayCast from ", typeFrom, "(", fromSize,")", " to ", typeTo, "(", toSize,")");
+    import rt.hooks;
+    abort();
+}
+
+TTo[] __ArrayCast(TFrom, TTo)(return scope TFrom[] from, string file = __FILE__) nothrow
 {
     const fromSize = from.length * TFrom.sizeof;
     const toLength = fromSize / TTo.sizeof;
 
     if ((fromSize % TTo.sizeof) != 0)
-    {
-        //onArrayCastError(TFrom.stringof, fromSize, TTo.stringof, toLength * TTo.sizeof);
-	    import rt.hooks;
-	    abort();
-    }
+        onArrayCastError(TFrom.stringof, fromSize, TTo.stringof, toLength * TTo.sizeof);
 
     struct Array
     {
         size_t length;
         void* ptr;
     }
-    auto a = cast(Array*)&from;
+    auto a = cast(Array*)cast(void*)&from;
     a.length = toLength; // jam new length
     return *cast(TTo[]*)a;
 }

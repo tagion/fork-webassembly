@@ -49,9 +49,9 @@ else version(UsePSVMem)
         ushort magicNumber = MAGIC;
         // string file;
         // size_t line;
-        ubyte[0] data;
+        private ubyte[0] data;
         pure nothrow @nogc @trusted void* getPtr () return {return (cast(void*)&this) + PSVMem.sizeof;}
-        pragma(inline, true) static size_t dataOffset() nothrow pure @nogc @trusted {return PSVMem.sizeof;}
+        pragma(inline, true) static uint dataOffset() nothrow pure @nogc @trusted {return PSVMem.sizeof;}
     }
 
     package bool isPSVMem(void* ptr) pure nothrow @nogc @trusted
@@ -104,7 +104,8 @@ else version(UsePSVMem)
         void free(ubyte* ptr) @nogc
         {
             void* thePtr = getPSVMem(ptr);
-            if(thePtr !is null) psv_free(cast(ubyte*)thePtr);
+            if(thePtr !is null) 
+                psv_free(cast(ubyte*)thePtr);
         }
 
         ubyte[] malloc(size_t sz, string file = __FILE__, size_t line = __LINE__) 
@@ -113,7 +114,7 @@ else version(UsePSVMem)
             mem.magicNumber = MAGIC;
             // mem.file = file;
             // mem.line = line;
-            mem.size = sz;
+            mem.size = cast(typeof(mem.size))sz;
             ubyte[] ret = (cast(ubyte*) mem.getPtr)[0..sz];
             return ret;
         }

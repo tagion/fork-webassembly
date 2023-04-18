@@ -16,6 +16,10 @@ import rt.hooks;
 
 uint min(uint a, uint b) { return a < b ? a : b; }
 uint max(uint a, uint b) { return a > b ? a : b; }
+ulong min(ulong a, ulong b) { return a < b ? a : b; }
+ulong max(ulong a, ulong b) { return a > b ? a : b; }
+
+
 
 // grow threshold
 private enum GROW_NUM = 4;
