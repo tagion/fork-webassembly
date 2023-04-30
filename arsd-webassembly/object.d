@@ -125,14 +125,16 @@ extern(C) void* memset(void* s, int c, size_t n)  @nogc nothrow pure
 pragma(LDC_intrinsic, "llvm.memcpy.p0i8.p0i8.i#")
     void llvm_memcpy(T)(void* dst, const(void)* src, T len, bool volatile_ = false);
 
+version(WebAssembly)
+extern(C) void *memcpy(void* dest, const(void)* src, size_t n) pure @nogc nothrow
+{
+	ubyte *d = cast(ubyte*) dest;
+	const (ubyte) *s = cast(const(ubyte)*)src;
+	for (; n; n--) *d++ = *s++;
+	return dest;
+}
+else
 extern(C) void *memcpy(void* dest, const(void)* src, size_t n) pure @nogc nothrow;
-// extern(C) void *memcpy(void* dest, const(void)* src, size_t n) pure @nogc nothrow
-// {
-// 	ubyte *d = cast(ubyte*) dest;
-// 	const (ubyte) *s = cast(const(ubyte)*)src;
-// 	for (; n; n--) *d++ = *s++;
-// 	return dest;
-// }
 
 extern(C) int memcmp(const(void)* s1, const(void*) s2, size_t n) pure @nogc nothrow @trusted
 {
