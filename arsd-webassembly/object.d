@@ -1307,13 +1307,16 @@ extern (C) void[] _d_newarraymiTX(const TypeInfo ti, size_t[] dims)
 
 
 template _d_arraysetlengthTImpl(Tarr : T[], T) {
-	size_t _d_arraysetlengthT(return scope ref Tarr arr, size_t newlength) @trusted {
+	size_t _d_arraysetlengthT(return scope ref Tarr arr, size_t newlength) @trusted pure {
 		auto orig = arr;
 
 		if(newlength <= arr.length) {
 			arr = arr[0 ..newlength];
 		} else {
-			auto ptr = cast(T*) realloc(cast(ubyte[])arr, newlength * T.sizeof);
+            alias pRealloc = ubyte[] function (ubyte[], size_t,
+  string file = __FILE__, size_t line = __LINE__) pure;
+            auto pureRealloc = cast(pRealloc)&realloc;
+			auto ptr = cast(T*) pureRealloc(cast(ubyte[])arr, newlength * T.sizeof);
 			arr = ptr[0 .. newlength];
 			if(orig !is null) {
 				arr[0 .. orig.length] = orig[];
