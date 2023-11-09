@@ -1,5 +1,6 @@
 module core.array.common;
-import rt.hooks : free, malloc, calloc, realloc;
+static import rt.hooks;
+// import rt.hooks : free, malloc, calloc, realloc, pureRealloc;
 
 extern (C) byte[] _d_arrayappendcTX(const TypeInfo ti, ref byte[] px, size_t n) @trusted nothrow 
 {
@@ -10,12 +11,12 @@ extern (C) byte[] _d_arrayappendcTX(const TypeInfo ti, ref byte[] px, size_t n) 
 	ubyte* ptr;
     bool hasReallocated = false;
 	if(px.ptr is null)
-		ptr = malloc(newSize).ptr;
+		ptr = rt.hooks.malloc(newSize).ptr;
 	else
     {
         // FIXME: anti-stomping by checking length == used   
         hasReallocated = true;
-		ptr = realloc(cast(ubyte[])px, newSize).ptr;
+		ptr = rt.hooks.realloc(cast(ubyte[])px, newSize).ptr;
     }
 	auto ns = ptr[0 .. newSize];
 	auto op = px.ptr;
@@ -27,7 +28,7 @@ extern (C) byte[] _d_arrayappendcTX(const TypeInfo ti, ref byte[] px, size_t n) 
     version(PSVita)
     {
         if(hasReallocated)
-            free(cast(ubyte*)op);
+            rt.hooks.free(cast(ubyte*)op);
     }
 
 	(cast(size_t *)(&px))[0] = newLength;

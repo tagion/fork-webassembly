@@ -144,7 +144,8 @@ else version(UsePSVMem)
             memcpy(mem, ptr, (cast(PSVMem*)thePtr).size);
             return (cast(ubyte*)mem)[0..newSize];
         }
-        ubyte[] realloc(ubyte[] ptr, size_t newSize, string file = __FILE__, size_t line = __LINE__)
+
+        ubyte[] reallocMain(ubyte[] ptr, size_t newSize, string file = __FILE__, size_t line = __LINE__)
         {
             if(ptr is null) return malloc(newSize, file, line);
             auto thePtr = getPSVMem(ptr.ptr);
@@ -156,6 +157,18 @@ else version(UsePSVMem)
                 return ret;
             }
             return realloc(ptr.ptr, newSize, file, line);
+        }
+        pragma(inline, true)
+        ubyte[] realloc(ubyte[] ptr, size_t newSize, string file = __FILE__, size_t line = __LINE__)
+        {
+            return realloc(ptr, newSize, file, line);
+        }
+        pragma(inline, true)
+        ubyte[] pureRealloc(ubyte[] ptr, size_t newSize, string file = __FILE__, size_t line = __LINE__) pure
+        {
+            alias pRealloc = ubyte[] function (ubyte[], size_t, string file = __FILE__, size_t line = __LINE__) pure;
+            auto pureRealloc = cast(pRealloc)&reallocMain;
+            return pureRealloc(ptr,newSize,file,line);
         }
         ubyte[] calloc(size_t count, size_t size, string file = __FILE__, size_t line = __LINE__)
         {

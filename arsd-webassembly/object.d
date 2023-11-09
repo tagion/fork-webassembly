@@ -1,8 +1,7 @@
 // Minimal druntime for webassembly. Assumes your program has a main function.
 module object;
 
-import rt.hooks : free, malloc, calloc, realloc;
-static import rt.hooks;
+import rt.hooks;
 version(WebAssembly)
     static import arsd.webassembly;
 
@@ -1241,21 +1240,35 @@ extern (C) void* _d_newitemU(scope const TypeInfo _ti)
 }
 
 /// ditto
-extern (C) void* _d_newitemT(in TypeInfo _ti)
+static if(__VERSION__ < 2105)
 {
-    auto p = _d_newitemU(_ti);
-    memset(p, 0, _ti.size);
-    return p;
-}
+    extern (C) void* _d_newitemT(in TypeInfo _ti)
+    {
+        auto p = _d_newitemU(_ti);
+        memset(p, 0, _ti.size);
+        return p;
+    }
 
-/// Same as above, for item with non-zero initializer.
-extern (C) void* _d_newitemiT(in TypeInfo _ti)
+    /// Same as above, for item with non-zero initializer.
+    extern (C) void* _d_newitemiT(in TypeInfo _ti)
+    {
+        auto p = _d_newitemU(_ti);
+        auto init = _ti.initializer();
+        assert(init.length <= _ti.size, "init.length <= _ti.size");
+        memcpy(p, init.ptr, init.length);
+        return p;
+    }
+}
+else static if(__VERSION__ >= 2105)
 {
-    auto p = _d_newitemU(_ti);
-    auto init = _ti.initializer();
-    assert(init.length <= _ti.size, "init.length <= _ti.size");
-    memcpy(p, init.ptr, init.length);
-    return p;
+    T* _d_newitemT(T)() @trusted
+    {
+        TypeInfo _ti = typeid(T);
+        auto p = _d_newitemU(_ti);
+        memset(p, 0, _ti.size);
+        return cast(T*)p;
+    }
+
 }
 
 
@@ -1305,7 +1318,6 @@ extern (C) void[] _d_newarraymiTX(const TypeInfo ti, size_t[] dims)
 }
 
 
-
 template _d_arraysetlengthTImpl(Tarr : T[], T) {
 	size_t _d_arraysetlengthT(return scope ref Tarr arr, size_t newlength) @trusted pure {
 		auto orig = arr;
@@ -1313,13 +1325,13 @@ template _d_arraysetlengthTImpl(Tarr : T[], T) {
 		if(newlength <= arr.length) {
 			arr = arr[0 ..newlength];
 		} else {
-            alias pRealloc = ubyte[] function (ubyte[], size_t,
-  string file = __FILE__, size_t line = __LINE__) pure;
-            auto pureRealloc = cast(pRealloc)&realloc;
 			auto ptr = cast(T*) pureRealloc(cast(ubyte[])arr, newlength * T.sizeof);
 			arr = ptr[0 .. newlength];
 			if(orig !is null) {
-				arr[0 .. orig.length] = orig[];
+                static if(is(Tarr == string))
+				    (cast(char[])arr)[0 .. orig.length] = orig[];
+                else
+				    arr[0 .. orig.length] = orig[];
 			}
 		}
 
@@ -1327,12 +1339,140 @@ template _d_arraysetlengthTImpl(Tarr : T[], T) {
 	}
 }
 
+extern (C) void[] _d_arraysetlengthT(const TypeInfo ti, size_t newlength, void[]* p)
+in
+{
+    assert(ti);
+    assert(!(*p).length || (*p).ptr);
+}
+do
+{
+    import core.arsd.objectutils;
+    if (newlength <= (*p).length)
+    {
+        *p = (*p)[0 .. newlength];
+        void* newdata = (*p).ptr;
+        return newdata[0 .. newlength];
+    }
+    auto tinext = ti.next;
+    size_t sizeelem = tinext.size;
+
+    /* Calculate: newsize = newlength * sizeelem
+     */
+    bool overflow = false;
+    import core.checkedint : mulu;
+    const size_t newsize = mulu(sizeelem, newlength, overflow);
+    if (overflow)
+        onOutOfMemoryError();
+
+    if (!(*p).ptr)
+    {
+        // pointer was null, need to allocate
+        auto info = malloc(newsize);
+        memset(info.ptr, 0, newsize);
+        *p = info[0 .. newlength];
+        return *p;
+    }
+
+    const size_t size = (*p).length * sizeelem;
+
+    /* Attempt to extend past the end of the existing array.
+     * If not possible, allocate new space for entire array and copy.
+     */
+    auto ptr = pureRealloc(cast(ubyte[])*p, newsize);
+    ptr[0 .. size] = cast(ubyte[])p.ptr[0 .. size];
+
+    /* Do postblit processing, as we are making a copy and the
+    * original array may have references.
+    * Note that this may throw.
+    */
+    __doPostblit(p.ptr, size, tinext);
+
+    // Initialize the unused portion of the newly allocated space
+    memset(p.ptr + size, 0, newsize - size);
+    return *p;
+}
+
+extern (C) void[] _d_arraysetlengthiT(const TypeInfo ti, size_t newlength, void[]* p)
+in
+{
+    assert(!(*p).length || (*p).ptr);
+}
+do
+{
+    import core.arsd.objectutils;
+    if (newlength <= (*p).length)
+    {
+        *p = (*p)[0 .. newlength];
+        void* newdata = (*p).ptr;
+        return newdata[0 .. newlength];
+    }
+    auto tinext = ti.next;
+    size_t sizeelem = tinext.size;
+
+    import core.checkedint : mulu;
+    bool overflow;
+    const size_t newsize = mulu(sizeelem, newlength, overflow);
+    if (overflow)
+        onOutOfMemoryError();
+
+    static void doInitialize(void *start, void *end, const void[] initializer)
+    {
+        if (initializer.length == 1)
+        {
+            memset(start, *(cast(ubyte*)initializer.ptr), end - start);
+        }
+        else
+        {
+            auto q = initializer.ptr;
+            immutable initsize = initializer.length;
+            for (; start < end; start += initsize)
+            {
+                memcpy(start, q, initsize);
+            }
+        }
+    }
+
+    if (!(*p).ptr)
+    {
+        // pointer was null, need to allocate
+        auto info = malloc(newsize);
+        doInitialize(info.ptr, info.ptr + newsize, tinext.initializer);
+        *p = info[0 .. newlength];
+        return *p;
+    }
+
+    const size_t size = (*p).length * sizeelem;
+
+    /* Attempt to extend past the end of the existing array.
+     * If not possible, allocate new space for entire array and copy.
+     */
+    auto ptr = pureRealloc(cast(ubyte[])*p, newsize);
+    ptr[0 .. size] = cast(ubyte[])p.ptr[0 .. size];
+
+    /* Do postblit processing, as we are making a copy and the
+    * original array may have references.
+    * Note that this may throw.
+    */
+    __doPostblit(p.ptr, size, tinext);
+
+    // Initialize the unused portion of the newly allocated space
+    doInitialize(p.ptr + size, p.ptr + newsize, tinext.initializer);
+    return *p;
+}
+
+
+// extern(C) void[] _d_arraysetlengthiT(const TypeInfo ti, size_t newlength, void[]* p)
+// {
+
+// }
+
 public import core.array.v2102;
 public import core.array.v2099;
 
 
 
-version(inline_concat)
+version(inline_concat) static if(__VERSION__ < 2105)
 extern(C) void[] _d_arraycatnTX(const TypeInfo ti, scope byte[][] arrs) @trusted
 {
 	auto elemSize = ti.next.size;
@@ -1358,7 +1498,72 @@ extern(C) void[] _d_arraycatnTX(const TypeInfo ti, scope byte[][] arrs) @trusted
 	return cast(void[])ptr[0..length];
 }
 
-version(inline_concat)
+version(inline_concat) static if(__VERSION__ >= 2105)
+Tret _d_arraycatnTX(Tret, Tarr...)(auto ref Tarr froms) @trusted
+{
+    import core.internal.traits : hasElaborateCopyConstructor, Unqual;
+    import core.lifetime : copyEmplace;
+
+    Tret res;
+    size_t totalLen;
+
+    alias T = typeof(res[0]);
+    enum elemSize = T.sizeof;
+    enum hasPostblit = __traits(hasPostblit, T);
+
+    static foreach (from; froms)
+        static if (is (typeof(from) : T))
+            totalLen++;
+        else
+            totalLen += from.length;
+
+    if (totalLen == 0)
+        return res;
+
+    _d_arraysetlengthTImpl!(typeof(res))._d_arraysetlengthT(res, totalLen);
+
+    /* Currently, if both a postblit and a cpctor are defined, the postblit is
+     * used. If this changes, the condition below will have to be adapted.
+     */
+    static if (hasElaborateCopyConstructor!T && !hasPostblit)
+    {
+        size_t i = 0;
+        foreach (ref from; froms)
+            static if (is (typeof(from) : T))
+                copyEmplace(cast(T) from, res[i++]);
+            else
+            {
+                if (from.length)
+                    foreach (ref elem; from)
+                        copyEmplace(cast(T) elem, res[i++]);
+            }
+    }
+    else
+    {
+        auto resptr = cast(Unqual!T *) res;
+        foreach (ref from; froms)
+            static if (is (typeof(from) : T))
+                memcpy(resptr++, cast(Unqual!T *) &from, elemSize);
+            else
+            {
+                const len = from.length;
+                if (len)
+                {
+                    memcpy(resptr, cast(Unqual!T *) from, len * elemSize);
+                    resptr += len;
+                }
+            }
+
+        static if (hasPostblit)
+            foreach (ref elem; res)
+                (cast() elem).__xpostblit();
+    }
+
+    return res;
+}
+
+
+version(inline_concat) static if(__VERSION__ < 2105)
 extern (C) byte[] _d_arraycatT(const TypeInfo ti, byte[] x, byte[] y)
 {
     import core.arsd.objectutils;

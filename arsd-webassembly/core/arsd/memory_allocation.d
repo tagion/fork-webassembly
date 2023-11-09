@@ -2,7 +2,6 @@ module core.arsd.memory_allocation;
 
 version(WebAssembly)
 {
-
 	private __gshared ubyte* nextFree;
 	private __gshared size_t memorySize; // in units of 64 KB pages
 
@@ -247,7 +246,7 @@ version(WebAssembly)
 	*  If the ptr isn't owned by the runtime, it will completely malloc the data (instead of realloc)
 	*   and copy its old content.
 	*/
-	export ubyte[] realloc(ubyte[] ptr, size_t newSize, string file = __FILE__, size_t line = __LINE__) @trusted nothrow
+	ubyte[] reallocMain(ubyte[] ptr, size_t newSize, string file = __FILE__, size_t line = __LINE__) @trusted nothrow
 	{
 		if(ptr is null)
 			return malloc(newSize, file, line);
@@ -259,5 +258,16 @@ version(WebAssembly)
 			return ret;
 		}
 		else return realloc(ptr.ptr, newSize, file, line);
+	}
+	export ubyte[] realloc(ubyte[] ptr, size_t newSize, string file = __FILE__, size_t line = __LINE__) @trusted nothrow
+	{
+		return reallocMain(ptr, newSize, file, line);
+	}
+	pragma(inline, true)
+	ubyte[] pureRealloc(ubyte[] ptr, size_t newSize, string file = __FILE__, size_t line = __LINE__) pure @trusted 
+	{
+		alias pRealloc = ubyte[] function (ubyte[], size_t, string file = __FILE__, size_t line = __LINE__) pure;
+		auto pureRealloc = cast(pRealloc)&reallocMain;
+		return pureRealloc(ptr,newSize,file,line);
 	}
 }
