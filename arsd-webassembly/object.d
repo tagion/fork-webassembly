@@ -1330,6 +1330,10 @@ template _d_arraysetlengthTImpl(Tarr : T[], T) {
 			if(orig !is null) {
                 static if(is(Tarr == string))
 				    (cast(char[])arr)[0 .. orig.length] = orig[];
+                else static if(is(Tarr == wstring))
+				    (cast(wchar[])arr)[0 .. orig.length] = orig[];
+                else static if(is(Tarr == dstring))
+				    (cast(dchar[])arr)[0 .. orig.length] = orig[];
                 else
 				    arr[0 .. orig.length] = orig[];
 			}
