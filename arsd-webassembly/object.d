@@ -44,7 +44,7 @@ else
 }
 
 
-extern(C) bool _xopEquals(in void*, in void*) { return false; } // assert(0);
+extern(C) bool _xopEquals(const void*, const void*) { return false; } // assert(0);
 
 // basic array support {
 
@@ -1982,7 +1982,7 @@ class TypeInfo_Struct : TypeInfo {
 	}
 }
 
-extern(C) bool _xopCmp(in void*, in void*) { return false; }
+extern(C) bool _xopCmp(const void*, const void*) { return false; }
 
 // }
 
