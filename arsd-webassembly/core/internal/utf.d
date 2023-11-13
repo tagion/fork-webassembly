@@ -37,7 +37,7 @@ extern (C) void onUnicodeError( string msg, size_t idx, string file = __FILE__, 
  */
 
 @safe @nogc pure nothrow
-bool isValidDchar(dchar c)
+extern(C) bool isValidDchar(dchar c)
 {
     /* Note: FFFE and FFFF are specifically permitted by the
      * Unicode standard for application internal use, but are not

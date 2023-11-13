@@ -166,7 +166,7 @@ else version(UsePSVMem)
         pragma(inline, true)
         ubyte[] pureRealloc(ubyte[] ptr, size_t newSize, string file = __FILE__, size_t line = __LINE__) pure
         {
-            alias pRealloc = ubyte[] function (ubyte[], size_t, string file = __FILE__, size_t line = __LINE__) pure;
+            alias pRealloc = ubyte[] function (ubyte[], size_t, string file = __FILE__, size_t line = __LINE__) pure @nogc nothrow;
             auto pureRealloc = cast(pRealloc)&reallocMain;
             return pureRealloc(ptr,newSize,file,line);
         }
