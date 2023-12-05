@@ -1,5 +1,6 @@
 module core.array.v2099;
 import rt.hooks;
+import core.array.common;
 
 extern (C) void[] _d_arrayappendT(const TypeInfo ti, ref byte[] x, byte[] y)
 {

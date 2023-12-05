@@ -1184,6 +1184,23 @@ class TypeInfo_Enum : TypeInfo {
     }
 }
 
+
+static if(__VERSION__ >= 2106)
+{
+T[] _d_newarrayU(T)(size_t length, bool isShared = false) pure @trusted
+{
+    alias PureM = ubyte[] function(size_t sz, string file = __FILE__, size_t line = __LINE__) pure @trusted nothrow;
+    PureM pureMalloc = cast(PureM)&malloc;
+	return (cast(T*)pureMalloc(length * T.sizeof).ptr)[0..length];
+}
+
+T[] _d_newarrayT(T)(size_t length, bool isShared = false) pure @trusted
+{
+	auto arr = _d_newarrayU!T(length);
+	(cast(byte[])arr)[] = 0;
+	return arr;
+}
+}
 extern (C) void[] _d_newarrayU(const scope TypeInfo ti, size_t length)
 {
 	return malloc(length * ti.next.size);
