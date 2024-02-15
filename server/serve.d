@@ -100,7 +100,7 @@ void handler(Cgi cgi)
         cgi.write("404");
         return;
     }
-
+    //--revert=dtorfields
     string cmd;
     cmd = "ldc2 --revert=dtorfields --fvisibility=hidden -i=. -i=core -i=std -Iarsd-webassembly/ -L-allow-undefined -of" ~ path ~ ".wasm -mtriple=wasm32-unknown-unknown-wasm " ~ path ~ ".d arsd-webassembly/object.d";
 
@@ -108,7 +108,7 @@ void handler(Cgi cgi)
     const wasm_file = buildPath("..", path).setExtension("wasm");
     cmd = "ldc2 -i=. --d-version=CarelessAlocation -i=std -Iarsd-webassembly/ -L-allow-undefined -of" ~ wasm_file ~ " -mtriple=wasm32-unknown-unknown-wasm arsd-webassembly/core/arsd/aa arsd-webassembly/core/arsd/objectutils arsd-webassembly/core/internal/utf arsd-webassembly/core/arsd/utf_decoding " ~ path ~ ".d arsd-webassembly/object.d";
 
-    cmd = "ldc2 -i=. --d-version=CarelessAlocation -i=std -Iarsd-webassembly/ -L-allow-undefined -of"~path~".wasm -mtriple=wasm32-unknown-unknown-wasm arsd-webassembly/core/arsd/aa arsd-webassembly/core/arsd/objectutils arsd-webassembly/core/internal/utf arsd-webassembly/core/arsd/utf_decoding arsd-webassembly/core/arsd/memory_allocation arsd-webassembly/core/array/v2102 arsd-webassembly/core/array/v2099 arsd-webassembly/core/array/common "~path~" arsd-webassembly/object.d ";
+    cmd = "ldc2 --revert=dtorfields -i=. --d-version=CarelessAlocation -i=std -Iarsd-webassembly/ -L-allow-undefined -of"~path~".wasm -mtriple=wasm32-unknown-unknown-wasm arsd-webassembly/core/arsd/aa arsd-webassembly/core/arsd/objectutils arsd-webassembly/core/internal/utf arsd-webassembly/core/arsd/utf_decoding arsd-webassembly/core/arsd/memory_allocation arsd-webassembly/core/array/v2102 arsd-webassembly/core/array/v2099 arsd-webassembly/core/array/common "~path~" arsd-webassembly/object.d ";
     //    const wasm_file=buildPath(getcwd,"..",path).setExtension("wasm");
     writefln("wasm-file=%s %s", wasm_file, wasm_file.exists);
     writefln("cmd\n%s", cmd);
