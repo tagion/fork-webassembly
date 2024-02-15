@@ -1,0 +1,4 @@
+*.o
+*.wasm
+dfiles.mk
+server/serve 
